@@ -15,6 +15,7 @@ class RoutineTask extends Equatable {
     this.repeatRule = RepeatRule.daily,
     this.customDays = const <int>[],
     this.reminderEnabled = true,
+    this.isAlarm = false,
     this.blockedAppPackageIds = const <String>[],
     this.isCompletedToday = false,
     this.notes = '',
@@ -34,6 +35,14 @@ class RoutineTask extends Equatable {
   /// Used when [repeatRule] is [RepeatRule.custom]. 1 = Monday .. 7 = Sunday.
   final List<int> customDays;
   final bool reminderEnabled;
+
+  /// If true, [NotificationService.scheduleTaskReminder] schedules this
+  /// task's reminder as a full-screen, device-waking alarm (Android's
+  /// `AndroidScheduleMode.alarmClock` + a full-screen intent) instead of a
+  /// normal notification — for tasks like an early wake-up you can't risk
+  /// sleeping through. Has no effect on platforms where local notifications
+  /// can't wake the device (desktop, web).
+  final bool isAlarm;
 
   /// App/process identifiers to block while this task's session is active.
   final List<String> blockedAppPackageIds;
@@ -68,6 +77,7 @@ class RoutineTask extends Equatable {
     RepeatRule? repeatRule,
     List<int>? customDays,
     bool? reminderEnabled,
+    bool? isAlarm,
     List<String>? blockedAppPackageIds,
     bool? isCompletedToday,
     String? notes,
@@ -83,6 +93,7 @@ class RoutineTask extends Equatable {
       repeatRule: repeatRule ?? this.repeatRule,
       customDays: customDays ?? this.customDays,
       reminderEnabled: reminderEnabled ?? this.reminderEnabled,
+      isAlarm: isAlarm ?? this.isAlarm,
       blockedAppPackageIds: blockedAppPackageIds ?? this.blockedAppPackageIds,
       isCompletedToday: isCompletedToday ?? this.isCompletedToday,
       notes: notes ?? this.notes,
@@ -100,6 +111,7 @@ class RoutineTask extends Equatable {
     'repeatRule': repeatRule.name,
     'customDays': customDays,
     'reminderEnabled': reminderEnabled,
+    'isAlarm': isAlarm,
     'blockedAppPackageIds': blockedAppPackageIds,
     'isCompletedToday': isCompletedToday,
     'notes': notes,
@@ -122,6 +134,7 @@ class RoutineTask extends Equatable {
     ),
     customDays: (json['customDays'] as List<dynamic>? ?? const []).cast<int>(),
     reminderEnabled: json['reminderEnabled'] as bool? ?? true,
+    isAlarm: json['isAlarm'] as bool? ?? false,
     blockedAppPackageIds:
         (json['blockedAppPackageIds'] as List<dynamic>? ?? const [])
             .cast<String>(),
@@ -145,6 +158,7 @@ class RoutineTask extends Equatable {
     repeatRule,
     customDays,
     reminderEnabled,
+    isAlarm,
     blockedAppPackageIds,
     isCompletedToday,
     notes,

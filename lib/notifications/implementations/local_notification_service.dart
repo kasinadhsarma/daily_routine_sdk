@@ -94,26 +94,26 @@ class LocalNotificationService implements NotificationService {
 
     final hour = task.startMinuteOfDay ~/ 60;
     final minute = task.startMinuteOfDay % 60;
-    final details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        _config.channelId,
-        _config.channelName,
-        channelDescription: _config.channelDescription,
-      ),
-      iOS: const DarwinNotificationDetails(),
-      macOS: const DarwinNotificationDetails(),
-      linux: const LinuxNotificationDetails(),
-    );
+    final details = task.isAlarm ? _alarmDetails() : _reminderDetails();
+    // `alarmClock` is the only Android schedule mode that reliably fires
+    // (and wakes the device) through Doze/battery-optimization exactly on
+    // time — appropriate for a "must not sleep through this" task; it also
+    // shows the alarm-clock icon in the status bar, which is desirable
+    // here, not a side effect to work around.
+    final scheduleMode = task.isAlarm
+        ? AndroidScheduleMode.alarmClock
+        : AndroidScheduleMode.exactAllowWhileIdle;
+    final body = task.isAlarm ? "Time to get up — don't snooze it away." : 'Coming up now';
 
     switch (task.repeatRule) {
       case RepeatRule.once:
         await _plugin.zonedSchedule(
           _baseId(task.id) + 7,
           task.title,
-          'Coming up now',
+          body,
           _nextInstance(hour, minute),
           details,
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          androidScheduleMode: scheduleMode,
           uiLocalNotificationDateInterpretation:
               UILocalNotificationDateInterpretation.absoluteTime,
         );
@@ -121,43 +121,84 @@ class LocalNotificationService implements NotificationService {
         await _plugin.zonedSchedule(
           _baseId(task.id) + 7,
           task.title,
-          'Coming up now',
+          body,
           _nextInstance(hour, minute),
           details,
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          androidScheduleMode: scheduleMode,
           uiLocalNotificationDateInterpretation:
               UILocalNotificationDateInterpretation.absoluteTime,
           matchDateTimeComponents: DateTimeComponents.time,
         );
       case RepeatRule.weekdays:
         for (var isoWeekday = 1; isoWeekday <= 5; isoWeekday++) {
-          await _scheduleWeekly(task, isoWeekday, hour, minute, details);
+          await _scheduleWeekly(task, isoWeekday, hour, minute, body, details, scheduleMode);
         }
       case RepeatRule.weekends:
         for (final isoWeekday in [6, 7]) {
-          await _scheduleWeekly(task, isoWeekday, hour, minute, details);
+          await _scheduleWeekly(task, isoWeekday, hour, minute, body, details, scheduleMode);
         }
       case RepeatRule.custom:
         for (final isoWeekday in task.customDays) {
-          await _scheduleWeekly(task, isoWeekday, hour, minute, details);
+          await _scheduleWeekly(task, isoWeekday, hour, minute, body, details, scheduleMode);
         }
     }
   }
+
+  NotificationDetails _reminderDetails() => NotificationDetails(
+    android: AndroidNotificationDetails(
+      _config.channelId,
+      _config.channelName,
+      channelDescription: _config.channelDescription,
+    ),
+    iOS: const DarwinNotificationDetails(),
+    macOS: const DarwinNotificationDetails(),
+    linux: const LinuxNotificationDetails(),
+  );
+
+  /// Full-screen, max-priority, alarm-audio-stream treatment — as close to
+  /// a real alarm-clock app as a local notification can get without a
+  /// separate native alarm implementation. Falls back to a merely loud
+  /// notification on platforms without an equivalent (desktop/Linux).
+  NotificationDetails _alarmDetails() => NotificationDetails(
+    android: AndroidNotificationDetails(
+      _config.channelId,
+      _config.channelName,
+      channelDescription: _config.channelDescription,
+      importance: Importance.max,
+      priority: Priority.high,
+      category: AndroidNotificationCategory.alarm,
+      audioAttributesUsage: AudioAttributesUsage.alarm,
+      fullScreenIntent: true,
+      ongoing: true,
+      autoCancel: false,
+    ),
+    iOS: const DarwinNotificationDetails(
+      interruptionLevel: InterruptionLevel.timeSensitive,
+      sound: 'default',
+    ),
+    macOS: const DarwinNotificationDetails(
+      interruptionLevel: InterruptionLevel.timeSensitive,
+      sound: 'default',
+    ),
+    linux: const LinuxNotificationDetails(urgency: LinuxNotificationUrgency.critical),
+  );
 
   Future<void> _scheduleWeekly(
     RoutineTask task,
     int isoWeekday,
     int hour,
     int minute,
+    String body,
     NotificationDetails details,
+    AndroidScheduleMode scheduleMode,
   ) {
     return _plugin.zonedSchedule(
       _baseId(task.id) + (isoWeekday - 1),
       task.title,
-      'Coming up now',
+      body,
       _nextInstanceOfWeekday(isoWeekday, hour, minute),
       details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: scheduleMode,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
