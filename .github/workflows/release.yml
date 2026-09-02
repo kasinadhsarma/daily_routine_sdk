@@ -1,0 +1,49 @@
+name: Release
+
+# This package has no pub.dev publish step (publish_to: 'none' in
+# pubspec.yaml) — it's consumed as a git dependency, so a "release" here is
+# a tagged, checked commit that daily_routine's pubspec.yaml can pin to
+# (git: {url: ..., ref: vX.Y.Z}) instead of floating on `main`.
+#
+# To cut a release: bump `version:` in pubspec.yaml, merge to main, then
+# push a matching tag:
+#   git tag v0.2.0 && git push origin v0.2.0
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+
+      - run: flutter analyze
+
+      - name: Verify tag matches pubspec.yaml version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PUBSPEC_VERSION="$(grep -m1 '^version:' pubspec.yaml | awk '{print $2}')"
+          if [ "$TAG_VERSION" != "$PUBSPEC_VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match pubspec.yaml version ($PUBSPEC_VERSION)."
+            exit 1
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes
