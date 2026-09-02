@@ -36,6 +36,14 @@ class ActivityEvent extends Equatable {
 
   factory ActivityEvent.fromFirestore(String id, Map<String, dynamic> data) {
     final startedAtRaw = data['startedAt'];
+    // Native `cloud_firestore` writes a real Timestamp; the Linux REST path
+    // (see `RestActivityRepositoryService`) stores an ISO-8601 string
+    // instead, same as every other REST-backed model in this SDK.
+    final DateTime? startedAt = switch (startedAtRaw) {
+      Timestamp t => t.toDate(),
+      String s => DateTime.tryParse(s),
+      _ => null,
+    };
     return ActivityEvent(
       id: id,
       source: data['source'] as String? ?? 'unknown',
@@ -45,7 +53,7 @@ class ActivityEvent extends Equatable {
       packageName: data['packageName'] as String?,
       url: data['url'] as String?,
       windowTitle: data['windowTitle'] as String?,
-      startedAt: startedAtRaw is Timestamp ? startedAtRaw.toDate() : null,
+      startedAt: startedAt,
       durationMs: (data['durationMs'] as num?)?.toInt(),
     );
   }

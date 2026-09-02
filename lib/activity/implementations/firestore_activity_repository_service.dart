@@ -2,17 +2,43 @@ import 'dart:io' show Platform;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:daily_routine_sdk/activity/activity_repository_service.dart';
+import 'package:daily_routine_sdk/activity/implementations/rest_activity_repository_service.dart';
 import 'package:daily_routine_sdk/error/app_error.dart';
 import 'package:daily_routine_sdk/error/result.dart';
 import 'package:daily_routine_sdk/models/app_usage_event.dart';
 import 'package:daily_routine_sdk/models/activity_event.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
 
-/// [ActivityRepositoryService] backed by Firestore, at
-/// `users/{uid}/activity/{eventId}` — the same collection the Chrome
-/// extension writes browser sessions into.
+/// [ActivityRepositoryService] backed by Firestore — or, on platforms with
+/// no native `cloud_firestore` plugin implementation (Linux desktop), by
+/// [RestActivityRepositoryService] instead. Stored at
+/// `users/{uid}/activity/{eventId}` either way — the same collection the
+/// Chrome extension writes browser sessions into.
 class FirestoreActivityRepositoryService implements ActivityRepositoryService {
-  FirestoreActivityRepositoryService({FirebaseFirestore? firestore})
+  factory FirestoreActivityRepositoryService({FirebaseFirestore? firestore}) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+      return FirestoreActivityRepositoryService._(RestActivityRepositoryService());
+    }
+    return FirestoreActivityRepositoryService._(
+      _NativeFirestoreActivityRepositoryService(firestore: firestore),
+    );
+  }
+
+  FirestoreActivityRepositoryService._(this._impl);
+
+  final ActivityRepositoryService _impl;
+
+  @override
+  Future<Result<void>> logAppUsage(String uid, AppUsageEvent event) =>
+      _impl.logAppUsage(uid, event);
+
+  @override
+  Stream<List<ActivityEvent>> watchRecentActivity(String uid, {int limit = 50}) =>
+      _impl.watchRecentActivity(uid, limit: limit);
+}
+
+class _NativeFirestoreActivityRepositoryService implements ActivityRepositoryService {
+  _NativeFirestoreActivityRepositoryService({FirebaseFirestore? firestore})
     : _firestore = firestore ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _firestore;
