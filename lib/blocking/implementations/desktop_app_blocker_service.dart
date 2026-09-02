@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:daily_routine_sdk/blocking/app_blocker_service.dart';
 import 'package:daily_routine_sdk/models/blocked_app.dart';
+import 'package:daily_routine_sdk/usage/app_usage_tracker_service.dart';
+import 'package:daily_routine_sdk/usage/implementations/desktop_app_usage_tracker_service.dart';
 
 /// Desktop (Linux/Windows/macOS) implementation.
 ///
@@ -16,6 +18,7 @@ class DesktopAppBlockerService extends AppBlockerService {
 
   static void registerWith() {
     AppBlockerService.instance = DesktopAppBlockerService();
+    AppUsageTrackerService.instance = DesktopAppUsageTrackerService();
   }
 
   Timer? _pollTimer;

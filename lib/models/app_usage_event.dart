@@ -8,6 +8,7 @@ class AppUsageEvent extends Equatable {
     required this.appLabel,
     required this.startedAt,
     required this.durationMs,
+    this.windowTitle,
   });
 
   final String packageName;
@@ -15,6 +16,12 @@ class AppUsageEvent extends Equatable {
   final DateTime startedAt;
   final int durationMs;
 
+  /// The focused window's title, when the platform can read it (desktop
+  /// only — Android's `UsageStatsManager` has no window-title concept).
+  /// This is often the most useful field for "what was I actually doing":
+  /// the file open in an editor, the video playing, the browser tab.
+  final String? windowTitle;
+
   @override
-  List<Object?> get props => [packageName, appLabel, startedAt, durationMs];
+  List<Object?> get props => [packageName, appLabel, startedAt, durationMs, windowTitle];
 }

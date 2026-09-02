@@ -13,17 +13,22 @@ class ActivityEvent extends Equatable {
     this.domain,
     this.packageName,
     this.url,
+    this.windowTitle,
     this.startedAt,
     this.durationMs,
   });
 
   final String id;
-  final String source; // 'chrome' | 'android'
+  final String source; // 'chrome' | 'android' | 'desktop'
   final String type; // 'page' | 'video' | 'app'
   final String title;
   final String? domain;
   final String? packageName;
   final String? url;
+
+  /// Focused window title (desktop app sessions only) — the file open in
+  /// an editor, the video playing, the browser tab, etc.
+  final String? windowTitle;
   final DateTime? startedAt;
   final int? durationMs;
 
@@ -39,11 +44,13 @@ class ActivityEvent extends Equatable {
       domain: data['domain'] as String?,
       packageName: data['packageName'] as String?,
       url: data['url'] as String?,
+      windowTitle: data['windowTitle'] as String?,
       startedAt: startedAtRaw is Timestamp ? startedAtRaw.toDate() : null,
       durationMs: (data['durationMs'] as num?)?.toInt(),
     );
   }
 
   @override
-  List<Object?> get props => [id, source, type, title, domain, packageName, url, startedAt, durationMs];
+  List<Object?> get props =>
+      [id, source, type, title, domain, packageName, url, windowTitle, startedAt, durationMs];
 }
