@@ -3,6 +3,7 @@ import 'package:daily_routine_sdk/error/result.dart';
 import 'package:daily_routine_sdk/models/routine_task.dart';
 import 'package:daily_routine_sdk/notifications/config/local_notification_channel_config.dart';
 import 'package:daily_routine_sdk/notifications/notification_service.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
@@ -27,8 +28,8 @@ class LocalNotificationService implements NotificationService {
   Future<void> initialize() async {
     tz_data.initializeTimeZones();
     try {
-      final name = await FlutterTimezone.getLocalTimezone();
-      tz.setLocalLocation(tz.getLocation(name));
+      final localTimezone = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(localTimezone.identifier));
     } catch (_) {
       // Falls back to whatever `timezone` defaults to (UTC) if the device
       // timezone can't be resolved.
@@ -58,11 +59,14 @@ class LocalNotificationService implements NotificationService {
   @override
   Future<Result<bool>> requestPermission() async {
     try {
-      final androidGranted = await _plugin
-          .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin
-          >()
-          ?.requestNotificationsPermission();
+      final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin
+      >();
+      final androidGranted = await androidPlugin?.requestNotificationsPermission();
+      // Android 12+ (API 31+) also gates exact-time scheduling behind this
+      // separate permission; request it so alarmClock/exactAllowWhileIdle
+      // reminders don't silently fall back to inexact delivery.
+      await androidPlugin?.requestExactAlarmsPermission();
       final iosGranted = await _plugin
           .resolvePlatformSpecificImplementation<
             IOSFlutterLocalNotificationsPlugin
@@ -107,26 +111,22 @@ class LocalNotificationService implements NotificationService {
 
     switch (task.repeatRule) {
       case RepeatRule.once:
-        await _plugin.zonedSchedule(
+        await _zonedSchedule(
           _baseId(task.id) + 7,
           task.title,
           body,
           _nextInstance(hour, minute),
           details,
           androidScheduleMode: scheduleMode,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
         );
       case RepeatRule.daily:
-        await _plugin.zonedSchedule(
+        await _zonedSchedule(
           _baseId(task.id) + 7,
           task.title,
           body,
           _nextInstance(hour, minute),
           details,
           androidScheduleMode: scheduleMode,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
           matchDateTimeComponents: DateTimeComponents.time,
         );
       case RepeatRule.weekdays:
@@ -192,17 +192,69 @@ class LocalNotificationService implements NotificationService {
     NotificationDetails details,
     AndroidScheduleMode scheduleMode,
   ) {
-    return _plugin.zonedSchedule(
+    return _zonedSchedule(
       _baseId(task.id) + (isoWeekday - 1),
       task.title,
       body,
       _nextInstanceOfWeekday(isoWeekday, hour, minute),
       details,
       androidScheduleMode: scheduleMode,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
     );
+  }
+
+  /// Thin wrapper around `zonedSchedule` that swallows [UnimplementedError]
+  /// and falls back to inexact scheduling when the exact-alarm permission
+  /// isn't granted.
+  ///
+  /// Not every platform's notification backend supports OS-level scheduled
+  /// delivery — Linux's D-Bus notifications can only show a notification
+  /// immediately, so [FlutterLocalNotificationsPlugin] throws there. Skip
+  /// the reminder on those platforms instead of crashing the caller.
+  ///
+  /// On Android 12+ (API 31+), `alarmClock`/`exactAllowWhileIdle` require the
+  /// user to have granted "Alarms & reminders" in system settings (requested
+  /// in [requestPermission]); until then the plugin throws a
+  /// `PlatformException(exact_alarms_not_permitted)`. Retrying with
+  /// `inexactAllowWhileIdle` keeps the reminder roughly on time instead of
+  /// losing it (and crashing the caller) entirely.
+  Future<void> _zonedSchedule(
+    int id,
+    String title,
+    String body,
+    tz.TZDateTime scheduledDate,
+    NotificationDetails details, {
+    required AndroidScheduleMode androidScheduleMode,
+    DateTimeComponents? matchDateTimeComponents,
+  }) async {
+    try {
+      await _plugin.zonedSchedule(
+        id,
+        title,
+        body,
+        scheduledDate,
+        details,
+        androidScheduleMode: androidScheduleMode,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: matchDateTimeComponents,
+      );
+    } on UnimplementedError {
+      // No OS-level scheduling on this platform — nothing to fall back to.
+    } on PlatformException catch (e) {
+      if (e.code != 'exact_alarms_not_permitted') rethrow;
+      await _plugin.zonedSchedule(
+        id,
+        title,
+        body,
+        scheduledDate,
+        details,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: matchDateTimeComponents,
+      );
+    }
   }
 
   @override

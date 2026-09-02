@@ -20,6 +20,15 @@
         android:value="app-blocking-focus-session" />
     </service>
 
+    <service
+      android:name="com.kasinadhsarma.dailyroutine.daily_routine_sdk.AppUsageTrackerService"
+      android:exported="false"
+      android:foregroundServiceType="specialUse">
+      <property
+        android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+        android:value="personal-activity-tracking" />
+    </service>
+
     <activity
       android:name="com.kasinadhsarma.dailyroutine.daily_routine_sdk.BlockScreenActivity"
       android:exported="false"

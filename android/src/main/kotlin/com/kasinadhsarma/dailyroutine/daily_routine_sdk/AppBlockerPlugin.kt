@@ -20,8 +20,10 @@ import io.flutter.plugin.common.MethodChannel.Result
 class AppBlockerPlugin : FlutterPlugin, MethodCallHandler {
     private lateinit var methodChannel: MethodChannel
     private lateinit var eventChannel: EventChannel
+    private lateinit var usageEventChannel: EventChannel
     private lateinit var applicationContext: Context
     private var eventSink: EventChannel.EventSink? = null
+    private var usageEventSink: EventChannel.EventSink? = null
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         applicationContext = flutterPluginBinding.applicationContext
@@ -47,11 +49,40 @@ class AppBlockerPlugin : FlutterPlugin, MethodCallHandler {
                 }
             },
         )
+
+        usageEventChannel =
+            EventChannel(
+                flutterPluginBinding.binaryMessenger,
+                "daily_routine_sdk/app_usage/events",
+            )
+        usageEventChannel.setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, sink: EventChannel.EventSink?) {
+                    usageEventSink = sink
+                    AppUsageTrackerService.onSessionEnded = { event ->
+                        usageEventSink?.success(
+                            mapOf(
+                                "packageName" to event.packageName,
+                                "appLabel" to event.appLabel,
+                                "startedAt" to event.startedAt,
+                                "durationMs" to event.durationMs,
+                            )
+                        )
+                    }
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    usageEventSink = null
+                    AppUsageTrackerService.onSessionEnded = null
+                }
+            },
+        )
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         methodChannel.setMethodCallHandler(null)
         eventChannel.setStreamHandler(null)
+        usageEventChannel.setStreamHandler(null)
     }
 
     override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
@@ -69,6 +100,14 @@ class AppBlockerPlugin : FlutterPlugin, MethodCallHandler {
             }
             "stopBlocking" -> {
                 stopBlocking()
+                result.success(null)
+            }
+            "startUsageTracking" -> {
+                startUsageTracking()
+                result.success(null)
+            }
+            "stopUsageTracking" -> {
+                stopUsageTracking()
                 result.success(null)
             }
             else -> result.notImplemented()
@@ -144,6 +183,24 @@ class AppBlockerPlugin : FlutterPlugin, MethodCallHandler {
     private fun stopBlocking() {
         val intent = Intent(applicationContext, AppBlockerService::class.java).apply {
             action = AppBlockerService.ACTION_STOP
+        }
+        applicationContext.startService(intent)
+    }
+
+    private fun startUsageTracking() {
+        val intent = Intent(applicationContext, AppUsageTrackerService::class.java).apply {
+            action = AppUsageTrackerService.ACTION_START
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            applicationContext.startForegroundService(intent)
+        } else {
+            applicationContext.startService(intent)
+        }
+    }
+
+    private fun stopUsageTracking() {
+        val intent = Intent(applicationContext, AppUsageTrackerService::class.java).apply {
+            action = AppUsageTrackerService.ACTION_STOP
         }
         applicationContext.startService(intent)
     }
