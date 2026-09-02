@@ -65,7 +65,7 @@ service-interface + implementation pattern used by `beyond_hire_sdk`.
 - `activity/` — `ActivityRepositoryService` interface +
   `FirestoreActivityRepositoryService`, writing/reading
   `users/{uid}/activity/{eventId}` — the same collection the
-  [Chrome extension](https://github.com/kasinadhsarma/daily_routine/tree/main/chrome_extension)
+  [Chrome extension](https://github.com/kasinadhsarma/daily-routine-activity-tracker)
   writes browser tab/video sessions into, so `watchRecentActivity` returns
   a combined feed across every device.
 
