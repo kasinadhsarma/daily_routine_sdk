@@ -22,6 +22,7 @@ export 'error/app_error.dart';
 export 'error/result.dart';
 
 export 'models/activity_event.dart';
+export 'models/activity_summary.dart';
 export 'models/app_usage_event.dart';
 export 'models/app_user.dart';
 export 'models/blocked_app.dart';

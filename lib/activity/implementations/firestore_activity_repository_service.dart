@@ -7,6 +7,7 @@ import 'package:daily_routine_sdk/error/app_error.dart';
 import 'package:daily_routine_sdk/error/result.dart';
 import 'package:daily_routine_sdk/models/app_usage_event.dart';
 import 'package:daily_routine_sdk/models/activity_event.dart';
+import 'package:daily_routine_sdk/models/activity_summary.dart';
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
 
 /// [ActivityRepositoryService] backed by Firestore — or, on platforms with
@@ -35,6 +36,28 @@ class FirestoreActivityRepositoryService implements ActivityRepositoryService {
   @override
   Stream<List<ActivityEvent>> watchRecentActivity(String uid, {int limit = 50}) =>
       _impl.watchRecentActivity(uid, limit: limit);
+
+  @override
+  Future<Result<List<ActivityEvent>>> fetchAllEvents(String uid) => _impl.fetchAllEvents(uid);
+
+  @override
+  Future<Result<void>> deleteEvents(String uid, List<String> eventIds) =>
+      _impl.deleteEvents(uid, eventIds);
+
+  @override
+  Future<Result<void>> saveDailySummary(String uid, ActivitySummary summary) =>
+      _impl.saveDailySummary(uid, summary);
+
+  @override
+  Future<Result<ActivitySummary?>> getDailySummary(String uid, String date) =>
+      _impl.getDailySummary(uid, date);
+
+  @override
+  Future<Result<String?>> getLastRolloverDate(String uid) => _impl.getLastRolloverDate(uid);
+
+  @override
+  Future<Result<void>> setLastRolloverDate(String uid, String date) =>
+      _impl.setLastRolloverDate(uid, date);
 }
 
 class _NativeFirestoreActivityRepositoryService implements ActivityRepositoryService {
@@ -45,6 +68,12 @@ class _NativeFirestoreActivityRepositoryService implements ActivityRepositorySer
 
   CollectionReference<Map<String, dynamic>> _ref(String uid) =>
       _firestore.collection('users').doc(uid).collection('activity');
+
+  CollectionReference<Map<String, dynamic>> _summariesRef(String uid) =>
+      _firestore.collection('users').doc(uid).collection('activitySummaries');
+
+  DocumentReference<Map<String, dynamic>> _rolloverMarkerRef(String uid) =>
+      _firestore.collection('users').doc(uid).collection('meta').doc('activityRollover');
 
   @override
   Future<Result<void>> logAppUsage(String uid, AppUsageEvent event) => _guard(() async {
@@ -82,10 +111,52 @@ class _NativeFirestoreActivityRepositoryService implements ActivityRepositorySer
         );
   }
 
-  Future<Result<void>> _guard(Future<void> Function() action) async {
+  @override
+  Future<Result<List<ActivityEvent>>> fetchAllEvents(String uid) => _guard(() async {
+    final snapshot = await _ref(uid).get();
+    return snapshot.docs.map((doc) => ActivityEvent.fromFirestore(doc.id, doc.data())).toList();
+  });
+
+  @override
+  Future<Result<void>> deleteEvents(String uid, List<String> eventIds) => _guard(() async {
+    // Firestore caps a single batch at 500 writes.
+    const chunkSize = 450;
+    for (var i = 0; i < eventIds.length; i += chunkSize) {
+      final chunk = eventIds.skip(i).take(chunkSize);
+      final batch = _firestore.batch();
+      for (final id in chunk) {
+        batch.delete(_ref(uid).doc(id));
+      }
+      await batch.commit();
+    }
+  });
+
+  @override
+  Future<Result<void>> saveDailySummary(String uid, ActivitySummary summary) => _guard(
+    () => _summariesRef(uid).doc(summary.date).set(summary.toJson()),
+  );
+
+  @override
+  Future<Result<ActivitySummary?>> getDailySummary(String uid, String date) => _guard(() async {
+    final doc = await _summariesRef(uid).doc(date).get();
+    final data = doc.data();
+    return data == null ? null : ActivitySummary.fromJson(data);
+  });
+
+  @override
+  Future<Result<String?>> getLastRolloverDate(String uid) => _guard(() async {
+    final doc = await _rolloverMarkerRef(uid).get();
+    return doc.data()?['lastRolloverDate'] as String?;
+  });
+
+  @override
+  Future<Result<void>> setLastRolloverDate(String uid, String date) => _guard(
+    () => _rolloverMarkerRef(uid).set({'lastRolloverDate': date}),
+  );
+
+  Future<Result<T>> _guard<T>(Future<T> Function() action) async {
     try {
-      await action();
-      return const Result.success(null);
+      return Result.success(await action());
     } on FirebaseException catch (e, st) {
       return Result.failure(
         DatabaseError(e.message ?? 'Database operation failed.', cause: e, stackTrace: st),

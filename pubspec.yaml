@@ -2,7 +2,7 @@ name: daily_routine_sdk
 description: >
   Shared SDK (Auth, Firestore data layer, local reminders, and cross-platform
   app/process blocking) for Daily Routine clients.
-version: 0.1.3
+version: 0.1.4
 homepage: https://github.com/kasinadhsarma/daily_routine
 publish_to: 'none'
 
