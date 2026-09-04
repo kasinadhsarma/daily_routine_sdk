@@ -19,7 +19,7 @@ import 'package:http/http.dart' as http;
 class RestActivityRepositoryService implements ActivityRepositoryService {
   RestActivityRepositoryService({
     http.Client? client,
-    this.pollInterval = const Duration(seconds: 10),
+    this.pollInterval = const Duration(seconds: 30),
   }) : _client = client ?? http.Client();
 
   final http.Client _client;
@@ -103,10 +103,22 @@ class RestActivityRepositoryService implements ActivityRepositoryService {
     final controller = _watchControllers[uid];
     if (controller == null || controller.isClosed) return;
     try {
-      final response = await _client.get(
-        Uri.parse(_baseUrl(uid)),
-        headers: await _headers(),
+      // Firestore's listDocuments endpoint defaults to returning the whole
+      // collection with no limit — for an activity log that grows by the
+      // minute, that meant downloading everything (hundreds+ of docs) on
+      // every 10-second poll, forever. pageSize + orderBy push the
+      // limiting down to Firestore itself, matching what the native SDK's
+      // .orderBy().limit() already does on other platforms; without this,
+      // the read volume blows through the free-tier daily quota (50k
+      // reads/day) in well under an hour once the log has any real size.
+      final limit = _limits[uid] ?? 50;
+      final uri = Uri.parse(_baseUrl(uid)).replace(
+        queryParameters: {
+          'pageSize': '$limit',
+          'orderBy': 'startedAt desc',
+        },
       );
+      final response = await _client.get(uri, headers: await _headers());
       if (response.statusCode != 200) {
         controller.addError(
           StateError(
@@ -128,7 +140,6 @@ class RestActivityRepositoryService implements ActivityRepositoryService {
           if (aTime == null || bTime == null) return 0;
           return bTime.compareTo(aTime);
         });
-      final limit = _limits[uid] ?? 50;
       controller.add(events.take(limit).toList());
     } catch (e, stackTrace) {
       controller.addError(e, stackTrace);
