@@ -18,6 +18,7 @@ class RoutineTask extends Equatable {
     this.isAlarm = false,
     this.blockedAppPackageIds = const <String>[],
     this.isCompletedToday = false,
+    this.completedDate,
     this.notes = '',
     this.createdAt,
     this.updatedAt,
@@ -46,12 +47,40 @@ class RoutineTask extends Equatable {
 
   /// App/process identifiers to block while this task's session is active.
   final List<String> blockedAppPackageIds;
+
+  /// Raw persisted completion flag — do not read this directly to decide
+  /// whether today's occurrence is done, since it's never cleared on its
+  /// own; use [isCompletedForToday] instead. It only means anything when
+  /// paired with [completedDate], which records which calendar day it was
+  /// set for.
   final bool isCompletedToday;
+
+  /// The local calendar day (`yyyy-MM-dd`) [isCompletedToday] applies to —
+  /// set whenever the task is marked complete. A recurring task's
+  /// completion should only ever reflect *today*; without this, a task
+  /// checked off once would show as complete forever afterward, since
+  /// nothing else clears the flag.
+  final String? completedDate;
+
   final String notes;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
   int get endMinuteOfDay => startMinuteOfDay + durationMinutes;
+
+  /// Today's local date as `yyyy-MM-dd`, matching [completedDate]'s format.
+  static String todayKey() {
+    final now = DateTime.now();
+    final month = now.month.toString().padLeft(2, '0');
+    final day = now.day.toString().padLeft(2, '0');
+    return '${now.year}-$month-$day';
+  }
+
+  /// Whether this task's *current* occurrence (today) has been completed —
+  /// the flag reset automatically as soon as the calendar day changes,
+  /// since it's derived from [completedDate] rather than read as a raw
+  /// stored boolean.
+  bool get isCompletedForToday => isCompletedToday && completedDate == todayKey();
 
   bool occursOnWeekday(int isoWeekday) {
     switch (repeatRule) {
@@ -80,6 +109,7 @@ class RoutineTask extends Equatable {
     bool? isAlarm,
     List<String>? blockedAppPackageIds,
     bool? isCompletedToday,
+    String? completedDate,
     String? notes,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -96,6 +126,7 @@ class RoutineTask extends Equatable {
       isAlarm: isAlarm ?? this.isAlarm,
       blockedAppPackageIds: blockedAppPackageIds ?? this.blockedAppPackageIds,
       isCompletedToday: isCompletedToday ?? this.isCompletedToday,
+      completedDate: completedDate ?? this.completedDate,
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -114,6 +145,7 @@ class RoutineTask extends Equatable {
     'isAlarm': isAlarm,
     'blockedAppPackageIds': blockedAppPackageIds,
     'isCompletedToday': isCompletedToday,
+    'completedDate': completedDate,
     'notes': notes,
     'createdAt': createdAt?.toIso8601String(),
     'updatedAt': updatedAt?.toIso8601String(),
@@ -139,6 +171,7 @@ class RoutineTask extends Equatable {
         (json['blockedAppPackageIds'] as List<dynamic>? ?? const [])
             .cast<String>(),
     isCompletedToday: json['isCompletedToday'] as bool? ?? false,
+    completedDate: json['completedDate'] as String?,
     notes: json['notes'] as String? ?? '',
     createdAt: json['createdAt'] != null
         ? DateTime.tryParse(json['createdAt'] as String)
@@ -161,6 +194,7 @@ class RoutineTask extends Equatable {
     isAlarm,
     blockedAppPackageIds,
     isCompletedToday,
+    completedDate,
     notes,
   ];
 }

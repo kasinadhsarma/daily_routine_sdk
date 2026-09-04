@@ -25,6 +25,30 @@ void main() {
       expect(task.occursOnWeekday(DateTime.wednesday), isFalse);
     });
 
+    test('isCompletedForToday is false once completedDate is stale', () {
+      const stale = RoutineTask(
+        id: '1',
+        title: 'Read',
+        startMinuteOfDay: 0,
+        isCompletedToday: true,
+        completedDate: '2000-01-01',
+      );
+      expect(stale.isCompletedForToday, isFalse);
+
+      final current = stale.copyWith(completedDate: RoutineTask.todayKey());
+      expect(current.isCompletedForToday, isTrue);
+    });
+
+    test('isCompletedForToday is false for a pre-migration doc with no completedDate', () {
+      const legacy = RoutineTask(
+        id: '1',
+        title: 'Read',
+        startMinuteOfDay: 0,
+        isCompletedToday: true,
+      );
+      expect(legacy.isCompletedForToday, isFalse);
+    });
+
     test('toJson/fromJson round-trips', () {
       const task = RoutineTask(
         id: 'abc',

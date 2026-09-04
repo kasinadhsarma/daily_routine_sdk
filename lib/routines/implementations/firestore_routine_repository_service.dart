@@ -83,6 +83,7 @@ class _NativeFirestoreRoutineRepositoryService implements RoutineRepositoryServi
   }) => _guard(
     () => _tasksRef(uid).doc(taskId).update({
       'isCompletedToday': isCompleted,
+      'completedDate': isCompleted ? RoutineTask.todayKey() : null,
       'updatedAt': DateTime.now().toIso8601String(),
     }),
   );

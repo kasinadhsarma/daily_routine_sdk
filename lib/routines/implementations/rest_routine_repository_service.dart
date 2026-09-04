@@ -147,11 +147,12 @@ class RestRoutineRepositoryService implements RoutineRepositoryService {
     try {
       final fields = encodeFirestoreFields({
         'isCompletedToday': isCompleted,
+        'completedDate': isCompleted ? RoutineTask.todayKey() : null,
         'updatedAt': DateTime.now().toIso8601String(),
       });
       final uri = Uri.parse('${_baseUrl(uid)}/${Uri.encodeComponent(taskId)}').replace(
         queryParameters: {
-          'updateMask.fieldPaths': ['isCompletedToday', 'updatedAt'],
+          'updateMask.fieldPaths': ['isCompletedToday', 'completedDate', 'updatedAt'],
         },
       );
       final response = await _client.patch(
