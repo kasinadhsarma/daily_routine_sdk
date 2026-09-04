@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:daily_routine_sdk/config/rest_firebase_config.dart';
 import 'package:daily_routine_sdk/error/app_error.dart';
@@ -18,12 +19,18 @@ import 'package:http/http.dart' as http;
 /// Firestore's real-time Listen API is a bidirectional gRPC/HTTP2 stream,
 /// not reasonably implementable with `package:http`. This polls on an
 /// interval instead: a disclosed, deliberate degradation (near-live, not
-/// push).
+/// push). The 60s default (not, say, 10s) matters more than it looks —
+/// this has no server-side limit (every poll re-fetches the whole
+/// `tasks` collection), so read cost scales directly with how often it
+/// polls; too short an interval burns through Firestore's free-tier daily
+/// read quota even for a small task list, simply by running for 24h.
 class RestRoutineRepositoryService implements RoutineRepositoryService {
   RestRoutineRepositoryService({
     http.Client? client,
-    this.pollInterval = const Duration(seconds: 10),
+    this.pollInterval = const Duration(seconds: 60),
   }) : _client = client ?? http.Client();
+
+  static const _logName = 'RestRoutineRepositoryService';
 
   final http.Client _client;
   final Duration pollInterval;
@@ -68,11 +75,17 @@ class RestRoutineRepositoryService implements RoutineRepositoryService {
     final controller = _watchControllers[uid];
     if (controller == null || controller.isClosed) return;
     try {
+      developer.log('Polling users/$uid/tasks', name: _logName);
       final response = await _client.get(
         Uri.parse(_baseUrl(uid)),
         headers: await _headers(),
       );
       if (response.statusCode != 200) {
+        developer.log(
+          'Poll failed: ${response.statusCode} ${response.body}',
+          name: _logName,
+          level: 900,
+        );
         controller.addError(
           StateError('Firestore REST watchTasks failed: ${response.statusCode} ${response.body}'),
         );
@@ -80,6 +93,7 @@ class RestRoutineRepositoryService implements RoutineRepositoryService {
       }
       final body = jsonDecode(response.body) as Map<String, dynamic>;
       final docs = body['documents'] as List<dynamic>? ?? const [];
+      developer.log('Fetched ${docs.length} task doc(s)', name: _logName);
       final tasks = docs.map((doc) {
         final map = doc as Map<String, dynamic>;
         final id = (map['name'] as String).split('/').last;
@@ -87,6 +101,7 @@ class RestRoutineRepositoryService implements RoutineRepositoryService {
       }).toList()..sort((a, b) => a.startMinuteOfDay.compareTo(b.startMinuteOfDay));
       controller.add(tasks);
     } catch (e, stackTrace) {
+      developer.log('Poll threw', name: _logName, level: 1000, error: e, stackTrace: stackTrace);
       controller.addError(e, stackTrace);
     }
   }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:daily_routine_sdk/blocked_apps/blocked_apps_repository_service.dart';
 import 'package:daily_routine_sdk/config/rest_firebase_config.dart';
@@ -17,8 +18,10 @@ import 'package:http/http.dart' as http;
 class RestBlockedAppsRepositoryService implements BlockedAppsRepositoryService {
   RestBlockedAppsRepositoryService({
     http.Client? client,
-    this.pollInterval = const Duration(seconds: 10),
+    this.pollInterval = const Duration(seconds: 60),
   }) : _client = client ?? http.Client();
+
+  static const _logName = 'RestBlockedAppsRepositoryService';
 
   final http.Client _client;
   final Duration pollInterval;
@@ -63,11 +66,17 @@ class RestBlockedAppsRepositoryService implements BlockedAppsRepositoryService {
     final controller = _watchControllers[uid];
     if (controller == null || controller.isClosed) return;
     try {
+      developer.log('Polling users/$uid/blockedApps', name: _logName);
       final response = await _client.get(
         Uri.parse(_baseUrl(uid)),
         headers: await _headers(),
       );
       if (response.statusCode != 200) {
+        developer.log(
+          'Poll failed: ${response.statusCode} ${response.body}',
+          name: _logName,
+          level: 900,
+        );
         controller.addError(
           StateError(
             'Firestore REST watchBlockedApps failed: ${response.statusCode} ${response.body}',
@@ -77,12 +86,14 @@ class RestBlockedAppsRepositoryService implements BlockedAppsRepositoryService {
       }
       final body = jsonDecode(response.body) as Map<String, dynamic>;
       final docs = body['documents'] as List<dynamic>? ?? const [];
+      developer.log('Fetched ${docs.length} blocked-app doc(s)', name: _logName);
       controller.add(
         docs
             .map((doc) => BlockedApp.fromJson(decodeFirestoreFields(doc as Map<String, dynamic>)))
             .toList(),
       );
     } catch (e, stackTrace) {
+      developer.log('Poll threw', name: _logName, level: 1000, error: e, stackTrace: stackTrace);
       controller.addError(e, stackTrace);
     }
   }

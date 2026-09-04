@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:daily_routine_sdk/activity/activity_repository_service.dart';
@@ -24,6 +25,8 @@ class RestActivityRepositoryService implements ActivityRepositoryService {
 
   final http.Client _client;
   final Duration pollInterval;
+
+  static const _logName = 'RestActivityRepositoryService';
 
   final Map<String, StreamController<List<ActivityEvent>>> _watchControllers = {};
   final Map<String, Timer> _pollTimers = {};
@@ -118,8 +121,14 @@ class RestActivityRepositoryService implements ActivityRepositoryService {
           'orderBy': 'startedAt desc',
         },
       );
+      developer.log('Polling users/$uid/activity (pageSize=$limit)', name: _logName);
       final response = await _client.get(uri, headers: await _headers());
       if (response.statusCode != 200) {
+        developer.log(
+          'Poll failed: ${response.statusCode} ${response.body}',
+          name: _logName,
+          level: 900,
+        );
         controller.addError(
           StateError(
             'Firestore REST watchRecentActivity failed: ${response.statusCode} ${response.body}',
@@ -129,6 +138,7 @@ class RestActivityRepositoryService implements ActivityRepositoryService {
       }
       final body = jsonDecode(response.body) as Map<String, dynamic>;
       final docs = body['documents'] as List<dynamic>? ?? const [];
+      developer.log('Fetched ${docs.length} activity doc(s)', name: _logName);
       final events = docs.map((doc) {
         final map = doc as Map<String, dynamic>;
         final id = (map['name'] as String).split('/').last;
@@ -142,6 +152,7 @@ class RestActivityRepositoryService implements ActivityRepositoryService {
         });
       controller.add(events.take(limit).toList());
     } catch (e, stackTrace) {
+      developer.log('Poll threw', name: _logName, level: 1000, error: e, stackTrace: stackTrace);
       controller.addError(e, stackTrace);
     }
   }
